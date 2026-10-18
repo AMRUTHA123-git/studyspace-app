@@ -1,0 +1,349 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --------------------------------------------------------
+// USER & GAMIFIED PROFILE (Notion meets Duolingo)
+// --------------------------------------------------------
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String
+  username      String       @unique
+  avatarUrl     String?
+  bio           String?      @default("Determined learner on a mission.")
+  isPublic      Boolean      @default(false)
+  
+  streakDays    Int          @default(0)
+  longestStreak Int          @default(0)
+  totalXp       Int          @default(0)
+  level         Int          @default(1)
+  lastActiveAt  DateTime     @default(now())
+
+  tasks         Task[]
+  exams         Exam[]
+  testAttempts  TestAttempt[]
+  userBadges    UserBadge[]
+  studyLogs     StudyLog[]
+  resources     Resource[]
+  pastPapers    PastPaper[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+// --------------------------------------------------------
+// TASKS & DAILY PRODUCTIVITY
+// --------------------------------------------------------
+enum TaskCategory {
+  TODAY
+  TOMORROW
+  DATE_SPECIFIC
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title         String
+  description   String?
+  category      TaskCategory  @default(TODAY)
+  scheduledDate DateTime      @default(now())
+  priority      TaskPriority  @default(MEDIUM)
+  isCompleted   Boolean       @default(false)
+  completedAt   DateTime?
+
+  microTopicId  String?
+  microTopic    MicroTopic?   @relation(fields: [microTopicId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId, scheduledDate])
+  @@index([userId, category])
+}
+
+// --------------------------------------------------------
+// EXAMS & SYLLABUS DRILL-DOWN HIERARCHY
+// --------------------------------------------------------
+model Exam {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name          String
+  code          String?
+  targetDate    DateTime
+  color         String        @default("#8B5CF6")
+  
+  subjects      Subject[]
+  mockTests     MockTest[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId, targetDate])
+}
+
+model Subject {
+  id            String        @id @default(cuid())
+  examId        String
+  exam          Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  
+  name          String
+  order         Int           @default(0)
+  color         String?
+  
+  chapters      Chapter[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([examId])
+}
+
+model Chapter {
+  id            String        @id @default(cuid())
+  subjectId     String
+  subject       Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  name          String
+  order         Int           @default(0)
+  
+  microTopics   MicroTopic[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([subjectId])
+}
+
+model MicroTopic {
+  id            String        @id @default(cuid())
+  chapterId     String
+  chapter       Chapter       @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  title         String
+  order         Int           @default(0)
+  isCompleted   Boolean       @default(false)
+  completedAt   DateTime?
+  estimatedMins Int           @default(30)
+  
+  tasks         Task[]
+  questions     Question[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([chapterId])
+  @@index([isCompleted, completedAt])
+}
+
+// --------------------------------------------------------
+// AI TEST & PRACTICE ENGINE
+// --------------------------------------------------------
+enum PaperStatus {
+  PENDING
+  EXTRACTED
+  FAILED
+}
+
+model PastPaper {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title         String
+  examYear      Int
+  fileUrl       String
+  status        PaperStatus   @default(PENDING)
+  rawText       String?       @db.Text
+  
+  questions     Question[]
+
+  createdAt     DateTime      @default(now())
+}
+
+enum QuestionType {
+  MCQ
+  NUMERICAL
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+enum CognitiveLevel {
+  RECALL
+  CONCEPTUAL
+  APPLICATION
+  CRITICAL_ANALYSIS
+}
+
+model Question {
+  id             String          @id @default(cuid())
+  paperId        String?
+  pastPaper      PastPaper?      @relation(fields: [paperId], references: [id], onDelete: SetNull)
+  microTopicId   String?
+  microTopic     MicroTopic?     @relation(fields: [microTopicId], references: [id], onDelete: SetNull)
+  
+  questionText   String          @db.Text
+  type           QuestionType    @default(MCQ)
+  options        Json
+  correctAnswer  String
+  explanation    String          @db.Text
+  difficulty     Int             @default(3)
+  cognitiveLevel CognitiveLevel  @default(APPLICATION)
+
+  testQuestions  TestQuestion[]
+  userAnswers    UserAnswer[]
+
+  createdAt      DateTime        @default(now())
+
+  @@index([microTopicId])
+}
+
+enum TestType {
+  WEEKLY_REVISION
+  CHAPTER_PRACTICE
+  FULL_LENGTH_MOCK
+}
+
+model MockTest {
+  id              String         @id @default(cuid())
+  userId          String
+  examId          String?
+  exam            Exam?          @relation(fields: [examId], references: [id], onDelete: SetNull)
+  
+  title           String
+  testType        TestType       @default(WEEKLY_REVISION)
+  durationMinutes Int            @default(45)
+  totalMarks      Int            @default(100)
+  passingMarks    Int            @default(40)
+  isStrictTimer   Boolean        @default(true)
+  
+  testQuestions   TestQuestion[]
+  attempts        TestAttempt[]
+
+  createdAt       DateTime       @default(now())
+}
+
+model TestQuestion {
+  id            String        @id @default(cuid())
+  mockTestId    String
+  mockTest      MockTest      @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order         Int           @default(0)
+  marks         Int           @default(1)
+
+  @@unique([mockTestId, questionId])
+}
+
+model TestAttempt {
+  id              String        @id @default(cuid())
+  mockTestId      String
+  mockTest        MockTest      @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  score           Float         @default(0)
+  totalQuestions  Int
+  correctCount    Int           @default(0)
+  wrongCount      Int           @default(0)
+  skippedCount    Int           @default(0)
+  timeTakenSecs   Int           @default(0)
+  
+  userAnswers     UserAnswer[]
+
+  completedAt     DateTime      @default(now())
+
+  @@index([userId, completedAt])
+}
+
+model UserAnswer {
+  id              String        @id @default(cuid())
+  attemptId       String
+  attempt         TestAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  selectedAnswer  String?
+  isCorrect       Boolean       @default(false)
+  timeSpentSecs   Int           @default(0)
+}
+
+// --------------------------------------------------------
+// GAMIFICATION & HEATMAP
+// --------------------------------------------------------
+model Badge {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  title         String
+  description   String
+  icon          String
+  xpBonus       Int           @default(100)
+  
+  userBadges    UserBadge[]
+}
+
+model UserBadge {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId       String
+  badge         Badge         @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime      @default(now())
+
+  @@unique([userId, badgeId])
+}
+
+model StudyLog {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date             DateTime    @db.Date
+  minutesStudied   Int         @default(0)
+  topicsCompleted  Int         @default(0)
+  tasksFinished    Int         @default(0)
+  intensityLevel   Int         @default(1)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// --------------------------------------------------------
+// RESOURCE HUB
+// --------------------------------------------------------
+enum ResourceType {
+  PDF
+  YOUTUBE
+  WEB_NOTE
+  ARTICLE
+}
+
+model Resource {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title         String
+  type          ResourceType  @default(WEB_NOTE)
+  url           String
+  description   String?
+  tags          String[]      @default([])
+
+  createdAt     DateTime      @default(now())
+}
