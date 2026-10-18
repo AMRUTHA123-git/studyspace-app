@@ -56,3 +56,23 @@ export interface StudentProfile {
   targetExam: string;
   streakDays: number;
 }
+
+export type TestFilterType = "Whole Syllabus" | "Chapter Wise" | "Topic Wise";
+
+export interface MockTestQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface MockTestItem {
+  id: string;
+  title: string;
+  topics: string;
+  filterType: TestFilterType;
+  questionCount: number;
+  durationMinutes: number;
+  createdAt: number;
+  questions: MockTestQuestion[];
+}

@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Task, Exam, Certificate, StudentProfile, Subject } from "./types";
+import { Task, Exam, Certificate, StudentProfile, Subject, MockTestItem } from "./types";
 
 const TASKS_KEY = "study_prime_tasks";
 const EXAMS_KEY = "study_prime_exams";
 const CERTS_KEY = "study_prime_certs";
 const PROFILE_KEY = "study_prime_profile";
+const TESTS_KEY = "study_prime_tests";
 
-// Initial Demo Exams with BLANK syllabi (No hardcoded dummy syllabus data)
+// Initial Demo Exams with BLANK syllabi
 const INITIAL_EXAMS: Exam[] = [
   {
     id: "exam-1",
@@ -16,7 +17,7 @@ const INITIAL_EXAMS: Exam[] = [
     code: "CS-402",
     date: "2026-10-22",
     createdAt: Date.now() - 86400000,
-    subjects: [], // Starts completely blank
+    subjects: [],
   },
   {
     id: "exam-2",
@@ -24,7 +25,7 @@ const INITIAL_EXAMS: Exam[] = [
     code: "GATE-CS",
     date: "2027-02-14",
     createdAt: Date.now(),
-    subjects: [], // Starts completely blank
+    subjects: [],
   },
 ];
 
@@ -51,11 +52,56 @@ const INITIAL_PROFILE: StudentProfile = {
   streakDays: 14,
 };
 
+const INITIAL_TESTS: MockTestItem[] = [
+  {
+    id: "test-1",
+    title: "Test on: Boolean Algebra & Logic Minimization",
+    topics: "Boolean Algebra, De Morgan's Laws, K-Maps",
+    filterType: "Topic Wise",
+    questionCount: 5,
+    durationMinutes: 15,
+    createdAt: Date.now() - 3600000 * 24,
+    questions: [
+      {
+        id: "q-1",
+        question: "Which of the following is equivalent to (A + B)' according to De Morgan's Laws?",
+        options: ["A' + B'", "A' * B'", "A * B", "(A * B)'"],
+        correctOptionIndex: 1,
+      },
+      {
+        id: "q-2",
+        question: "What is the dual of the Boolean expression A + 0 = A?",
+        options: ["A * 1 = A", "A + 1 = 1", "A' * 0 = 0", "A * 0 = 0"],
+        correctOptionIndex: 0,
+      },
+      {
+        id: "q-3",
+        question: "How many cells are present in a 4-variable Karnaugh Map (K-Map)?",
+        options: ["8", "16", "32", "4"],
+        correctOptionIndex: 1,
+      },
+      {
+        id: "q-4",
+        question: "Which logic gate outputs 1 only when both inputs are identical?",
+        options: ["XOR", "XNOR", "NAND", "NOR"],
+        correctOptionIndex: 1,
+      },
+      {
+        id: "q-5",
+        question: "The Boolean expression A + A'B simplifies directly to which of the following?",
+        options: ["A + B", "A * B", "B", "A"],
+        correctOptionIndex: 0,
+      },
+    ],
+  },
+];
+
 export function useWorkspaceStorage() {
   const [exams, setExams] = useState<Exam[]>(INITIAL_EXAMS);
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [certs, setCerts] = useState<Certificate[]>(INITIAL_CERTS);
   const [profile, setProfile] = useState<StudentProfile>(INITIAL_PROFILE);
+  const [tests, setTests] = useState<MockTestItem[]>(INITIAL_TESTS);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -68,6 +114,8 @@ export function useWorkspaceStorage() {
       if (savedCerts) setCerts(JSON.parse(savedCerts));
       const savedProfile = localStorage.getItem(PROFILE_KEY);
       if (savedProfile) setProfile(JSON.parse(savedProfile));
+      const savedTests = localStorage.getItem(TESTS_KEY);
+      if (savedTests) setTests(JSON.parse(savedTests));
     } catch {}
     setIsLoaded(true);
   }, []);
@@ -92,13 +140,16 @@ export function useWorkspaceStorage() {
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(newProfile)); } catch {}
   };
 
-  // Helper to link newly built syllabus to an exam
+  const saveTests = (newTests: MockTestItem[]) => {
+    setTests(newTests);
+    try { localStorage.setItem(TESTS_KEY, JSON.stringify(newTests)); } catch {}
+  };
+
   const updateExamSyllabus = (examId: string, subjects: Subject[]) => {
     const updated = exams.map((ex) => (ex.id === examId ? { ...ex, subjects } : ex));
     saveExams(updated);
   };
 
-  // Helper to toggle a micro-topic in an exam
   const toggleMicroTopic = (
     examId: string,
     subjectId: string,
@@ -140,11 +191,13 @@ export function useWorkspaceStorage() {
     tasks,
     certs,
     profile,
+    tests,
     isLoaded,
     saveExams,
     saveTasks,
     saveCerts,
     saveProfile,
+    saveTests,
     updateExamSyllabus,
     toggleMicroTopic,
   };

@@ -60,7 +60,7 @@ const ACTIONS: ActionItem[] = [
   },
   {
     title: "Practice Mock",
-    href: "/syllabus",
+    href: "/tests",
     icon: Timer,
     bgLight: "bg-rose-50",
     borderColor: "border-rose-100",
