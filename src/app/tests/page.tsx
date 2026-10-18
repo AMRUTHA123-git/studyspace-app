@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useWorkspaceStorage } from "@/lib/storage";
 import { TestFilterType, MockTestItem, MockTestQuestion } from "@/lib/types";
+import { generateGateMockTest } from "@/lib/gateQuestionsBank";
 import {
   ClipboardCheck,
   Sparkles,
@@ -16,12 +17,35 @@ import {
   XCircle,
   HelpCircle,
   ArrowRight,
+  Calculator,
+  Award,
+  Zap,
+  Tag,
 } from "lucide-react";
 
 const FILTER_OPTIONS: { id: TestFilterType; label: string; icon: React.ElementType }[] = [
   { id: "Whole Syllabus", label: "Whole Syllabus", icon: BookOpen },
   { id: "Chapter Wise", label: "Chapter Wise", icon: Layers },
   { id: "Topic Wise", label: "Topic Wise", icon: FileText },
+];
+
+const QUICK_COUNTS = [5, 10, 15, 25, 30, 65];
+
+const QUICK_TOPIC_CHIPS = [
+  "Cache Memory & AMAT",
+  "Paging & Virtual Memory",
+  "CPU Scheduling (SRTF / RR)",
+  "TCP Congestion Control & Window",
+  "CIDR Subnetting & IP",
+  "Master Theorem & Recurrences",
+  "Binary Search Trees & Traversal",
+  "K-Maps & Prime Implicants",
+  "Eigenvalues & Linear Algebra",
+  "Probability & Bayes Theorem",
+  "DFA Minimization & Decidability",
+  "Normalization & Candidate Keys",
+  "B+ Tree Indexing",
+  "LL(1) & LR Parsing",
 ];
 
 export default function TestsPage() {
@@ -33,6 +57,9 @@ export default function TestsPage() {
   // Topic input state
   const [topicsInput, setTopicsInput] = useState("");
 
+  // Question count state (Fix 3: selector for 5, 10, 15, 25, 30, 65 or custom)
+  const [questionCount, setQuestionCount] = useState<number>(10);
+
   // Filter view state for the grid
   const [viewFilter, setViewFilter] = useState<"ALL" | TestFilterType>("ALL");
 
@@ -41,89 +68,58 @@ export default function TestsPage() {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [testSubmitted, setTestSubmitted] = useState(false);
 
-  // Helper generator to construct realistic test questions from the user's topics
-  const generateQuestionsForTopics = (topicsStr: string): MockTestQuestion[] => {
-    const rawList = topicsStr
-      .split(/[,;\n]+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
+  // Duration in minutes calculated based on GATE benchmark (approx 2.75 min/question or 180m for full 65Q)
+  const calculateDuration = (count: number): number => {
+    if (count >= 65) return 180;
+    return Math.max(10, Math.round(count * 2.75));
+  };
 
-    const primaryTopic = rawList[0] || "Core Concepts";
-    const secondaryTopic = rawList[1] || primaryTopic;
-
-    return [
-      {
-        id: `q-1-${Date.now()}`,
-        question: `In the study of ${primaryTopic}, which of the following statements represents a fundamental principle?`,
-        options: [
-          `The primary theorem governing ${primaryTopic} states that operational efficiency scales linearly with input size.`,
-          `All basic constraints must be satisfied simultaneously under standard invariant conditions.`,
-          `The secondary parameter strictly negates the primary state transition.`,
-          `No boundary condition applies when operating under equilibrium.`,
-        ],
-        correctOptionIndex: 1,
-      },
-      {
-        id: `q-2-${Date.now()}`,
-        question: `When analyzing a practical problem in ${primaryTopic}, what is the recommended first step?`,
-        options: [
-          `Decompose the problem into atomic components and verify edge conditions.`,
-          `Ignore input constraints until the final verification stage.`,
-          `Apply an asymptotic upper bound without defining standard parameters.`,
-          `Reverse the sequence of transformations arbitrarily.`,
-        ],
-        correctOptionIndex: 0,
-      },
-      {
-        id: `q-3-${Date.now()}`,
-        question: `How does ${secondaryTopic} complement the theoretical foundations of ${primaryTopic}?`,
-        options: [
-          `It acts as an independent subsystem with no shared state.`,
-          `It provides an analytical framework to validate correctness and performance benchmarks.`,
-          `It completely supersedes the fundamental axioms of the domain.`,
-          `It requires redundant execution loops to guarantee convergence.`,
-        ],
-        correctOptionIndex: 1,
-      },
-      {
-        id: `q-4-${Date.now()}`,
-        question: `Which of the following common pitfalls should be avoided when evaluating ${primaryTopic}?`,
-        options: [
-          `Failing to account for boundary conditions and off-by-one errors.`,
-          `Writing unit tests for each transformation step.`,
-          `Documenting operational assumptions clearly.`,
-          `Comparing experimental results with theoretical lower bounds.`,
-        ],
-        correctOptionIndex: 0,
-      },
-      {
-        id: `q-5-${Date.now()}`,
-        question: `What is the expected complexity or outcome when synthesizing ${primaryTopic} with ${secondaryTopic}?`,
-        options: [
-          `The combined system achieves predictable, deterministic behavior within specified tolerances.`,
-          `The problem space becomes non-computable in polynomial time.`,
-          `All previously verified invariant states become invalid.`,
-          `The runtime decreases to zero regardless of workload.`,
-        ],
-        correctOptionIndex: 0,
-      },
-    ];
+  const handleChipClick = (chip: string) => {
+    if (!topicsInput.trim()) {
+      setTopicsInput(chip);
+    } else if (!topicsInput.includes(chip)) {
+      setTopicsInput(`${topicsInput}, ${chip}`);
+    }
   };
 
   const handleGenerateTest = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topicsInput.trim()) return;
 
-    const trimmedTopics = topicsInput.trim();
-    const generatedQuestions = generateQuestionsForTopics(trimmedTopics);
+    let finalTopics = topicsInput.trim();
+    if (selectedFilter === "Whole Syllabus" && !finalTopics) {
+      finalTopics = "All 11 GATE CS Subjects (Math, COA, OS, Networks, DBMS, DS, Algo, TOC, CD, Digital, GA)";
+    }
+
+    if (!finalTopics) {
+      alert("Please enter or select at least one topic or chapter.");
+      return;
+    }
+
+    const exactCount = Math.max(1, questionCount || 10);
+    const duration = calculateDuration(exactCount);
+
+    // Call authentic GATE questions generator
+    const generatedQuestions = generateGateMockTest(
+      selectedFilter,
+      finalTopics,
+      exactCount
+    );
+
+    const firstTopic = finalTopics.split(/[,;\n]+/)[0]?.trim() || "GATE CS";
+    const testTitle =
+      selectedFilter === "Whole Syllabus"
+        ? `GATE CS Full-Length Mock (${exactCount} Qs)`
+        : selectedFilter === "Chapter Wise"
+        ? `GATE Chapter Drill: ${firstTopic}`
+        : `GATE Topic Test: ${firstTopic}`;
 
     const newTest: MockTestItem = {
       id: `test-${Date.now()}`,
-      title: `Test on: ${trimmedTopics.split(/[,;\n]+/)[0]?.trim() || "Studied Topics"}`,
-      topics: trimmedTopics,
+      title: testTitle,
+      topics: finalTopics,
       filterType: selectedFilter,
       questionCount: generatedQuestions.length,
-      durationMinutes: 15,
+      durationMinutes: duration,
       createdAt: Date.now(),
       questions: generatedQuestions,
     };
@@ -155,16 +151,25 @@ export default function TestsPage() {
   };
 
   const calculateScore = () => {
-    if (!activeTestForTaking) return { correct: 0, total: 0, scorePct: 0 };
+    if (!activeTestForTaking) return { correct: 0, total: 0, scorePct: 0, wrong: 0, unattempted: 0 };
     let correct = 0;
+    let wrong = 0;
+    let unattempted = 0;
+
     activeTestForTaking.questions.forEach((q) => {
-      if (selectedAnswers[q.id] === q.correctOptionIndex) {
+      const chosen = selectedAnswers[q.id];
+      if (chosen === undefined) {
+        unattempted++;
+      } else if (chosen === q.correctOptionIndex) {
         correct++;
+      } else {
+        wrong++;
       }
     });
+
     const total = activeTestForTaking.questions.length;
     const scorePct = total > 0 ? Math.round((correct / total) * 100) : 0;
-    return { correct, total, scorePct };
+    return { correct, wrong, unattempted, total, scorePct };
   };
 
   // Filtered list for the display grid
@@ -186,14 +191,14 @@ export default function TestsPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              Practice <span className="text-rose-600">Tests</span>
+              GATE <span className="text-rose-600">Mock Test Generator</span>
             </h1>
             <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-              AI Test Engine
+              GATE Rigor Engine
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Generate customized practice tests based on what you studied today across syllabus, chapters, or micro-topics.
+            Generate authentic GATE-level mock tests with NAT calculations, conceptual MSQs, and comprehensive step-by-step solutions.
           </p>
         </div>
 
@@ -233,36 +238,103 @@ export default function TestsPage() {
           </div>
         </div>
 
-        {/* Core Feature 2: Topic Input Form */}
+        {/* Core Feature 2: Question Count Selector (Fix 3 Requirement 1) */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-400">
+              2. Number of Questions
+            </label>
+            <span className="text-xs font-bold text-rose-600 font-mono">
+              Estimated Duration: {calculateDuration(questionCount)} Mins
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {QUICK_COUNTS.map((cnt) => (
+              <button
+                key={cnt}
+                type="button"
+                onClick={() => setQuestionCount(cnt)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                  questionCount === cnt
+                    ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {cnt} Qs {cnt === 65 && "(Full Mock)"}
+              </button>
+            ))}
+
+            {/* Custom Count Input */}
+            <div className="flex items-center gap-1.5 ml-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <span className="text-[11px] font-bold text-slate-500">Custom:</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={questionCount}
+                onChange={(e) => setQuestionCount(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-14 text-xs font-extrabold text-slate-900 bg-white border border-slate-200 rounded px-1.5 py-1 text-center focus:outline-none focus:border-rose-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Core Feature 3: Topic Input Form & Quick Chips */}
         <form onSubmit={handleGenerateTest} className="space-y-4 pt-1">
           <div>
-            <label className="block text-sm font-extrabold text-slate-900 mb-1">
-              What topics have you studied today?
-            </label>
-            <p className="text-xs text-slate-500 mb-2.5">
-              Type the names of the topics or concepts (e.g. <em>Boolean Algebra, K-Maps, De Morgan's Laws</em>).
-            </p>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-extrabold text-slate-900">
+                {selectedFilter === "Whole Syllabus"
+                  ? "Syllabus Scope (All 11 GATE CS Subjects)"
+                  : "Target Topics or Chapters"}
+              </label>
+              <span className="text-[11px] text-slate-400">
+                {selectedFilter === "Whole Syllabus"
+                  ? "Covers entire GATE CS curriculum"
+                  : "Click quick tags or type custom concepts"}
+              </span>
+            </div>
+
+            {selectedFilter !== "Whole Syllabus" && (
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {QUICK_TOPIC_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => handleChipClick(chip)}
+                    className="text-[11px] font-semibold bg-rose-50/70 hover:bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <textarea
               value={topicsInput}
               onChange={(e) => setTopicsInput(e.target.value)}
               rows={3}
-              required
-              placeholder="e.g. TCP 3-Way Handshake, Congestion Control, Fast Retransmit..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition"
+              placeholder={
+                selectedFilter === "Whole Syllabus"
+                  ? "Generating full GATE CS exam covering Math, GA, COA, OS, Networks, DBMS, TOC, Compiler, Algorithms, Digital Logic..."
+                  : "e.g. Cache Memory & AMAT, Paging & TLB EMAT, Dijkstra Shortest Path, K-Maps..."
+              }
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition leading-relaxed font-mono"
             />
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-            <span className="text-xs text-slate-400 font-medium">
-              Filter: <strong className="text-slate-700">{selectedFilter}</strong> • Generates 5 targeted questions with strict scoring.
+            <span className="text-xs text-slate-500 font-medium">
+              Generating <strong className="text-slate-800">{questionCount} authentic GATE questions</strong> (NAT Numericals + Conceptual MSQ + MCQ).
             </span>
 
             <button
               type="submit"
-              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-extrabold text-sm rounded-2xl transition shadow-md shadow-rose-600/25 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-rose-600/25 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Generate Mock Test</span>
+              <span>Generate GATE Mock ({questionCount} Qs)</span>
             </button>
           </div>
         </form>
@@ -276,7 +348,7 @@ export default function TestsPage() {
               Mock Test Dashboard
             </h2>
             <p className="text-xs text-slate-500">
-              Review and launch mock tests customized to your study sessions.
+              Launch real GATE mock tests or review your completed scores.
             </p>
           </div>
 
@@ -298,7 +370,7 @@ export default function TestsPage() {
           </div>
         </div>
 
-        {/* Core Feature 4: Test Cards Grid */}
+        {/* Test Cards Grid */}
         {displayedTests.length === 0 ? (
           <div className="py-16 text-center rounded-3xl border-2 border-dashed border-slate-200 bg-white p-8 space-y-3 shadow-xs">
             <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-2xl">
@@ -308,7 +380,7 @@ export default function TestsPage() {
               No Mock Tests Found
             </h3>
             <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-              Type the topics you studied today in the form above and click <strong>Generate Mock Test</strong> to build your first practice session.
+              Select your question count and topics above to generate your first authentic GATE practice test.
             </p>
           </div>
         ) : (
@@ -326,7 +398,7 @@ export default function TestsPage() {
                   className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition p-6 flex flex-col justify-between space-y-4 group"
                 >
                   <div className="space-y-2.5">
-                    {/* Badge showing the filter type */}
+                    {/* Badge showing filter type and questions count */}
                     <div className="flex items-center justify-between">
                       <span
                         className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
@@ -344,24 +416,26 @@ export default function TestsPage() {
                       </button>
                     </div>
 
-                    {/* Test Title with Selected Topics */}
+                    {/* Test Title */}
                     <h3 className="font-extrabold text-base text-slate-900 leading-snug group-hover:text-rose-600 transition line-clamp-2">
                       {test.title}
                     </h3>
 
-                    {/* Topics covered pill */}
+                    {/* Topics covered */}
                     <p className="text-xs text-slate-500 font-medium line-clamp-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                      <strong>Topics:</strong> {test.topics}
+                      <strong>Focus:</strong> {test.topics}
                     </p>
                   </div>
 
-                  {/* Metadata & Take Test Action Button */}
+                  {/* Metadata & Take Test Button */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       <span>{test.durationMinutes} Mins</span>
                       <span>•</span>
-                      <span>{test.questionCount} Questions</span>
+                      <span className="font-bold text-slate-700">
+                        {test.questionCount} Questions
+                      </span>
                     </div>
 
                     <button
@@ -379,10 +453,10 @@ export default function TestsPage() {
         )}
       </div>
 
-      {/* 4. Interactive "Take Test" Modal Drawer */}
+      {/* 4. Interactive "Take Test" Modal Drawer with Full Solutions */}
       {activeTestForTaking && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-7 max-w-2xl w-full shadow-2xl border border-slate-200 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl p-7 max-w-3xl w-full shadow-2xl border border-slate-200 space-y-6 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
@@ -393,7 +467,7 @@ export default function TestsPage() {
                   {activeTestForTaking.title}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {activeTestForTaking.questions.length} Questions • 15 Minutes
+                  {activeTestForTaking.questions.length} Questions • {activeTestForTaking.durationMinutes} Minutes Allotted
                 </p>
               </div>
               <button
@@ -406,23 +480,32 @@ export default function TestsPage() {
 
             {/* Score Banner when Submitted */}
             {testSubmitted && (
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                    ✓
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-sm">
+                      ✓
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-base text-emerald-950">
+                        Test Completed & Evaluated!
+                      </h4>
+                      <p className="text-xs text-emerald-700">
+                        Score: <strong>{calculateScore().correct}</strong> of <strong>{calculateScore().total}</strong> correct ({calculateScore().scorePct}%) • {calculateScore().wrong} incorrect • {calculateScore().unattempted} skipped
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-emerald-900">
-                      Test Completed!
-                    </h4>
-                    <p className="text-xs text-emerald-700">
-                      You scored {calculateScore().correct} out of {calculateScore().total} ({calculateScore().scorePct}%)
-                    </p>
-                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-900 bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-2xs">
+                    {calculateScore().scorePct >= 70
+                      ? "GATE Rank Target 🎉"
+                      : calculateScore().scorePct >= 40
+                      ? "Solid Progress 📈"
+                      : "Review Topics 📚"}
+                  </span>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-800 bg-white px-3 py-1 rounded-xl border border-emerald-200">
-                  {calculateScore().scorePct >= 70 ? "Passing Grade 🎉" : "Needs Review 📚"}
-                </span>
+                <div className="text-[11px] text-emerald-800 bg-white/70 p-2.5 rounded-xl border border-emerald-200/60 font-medium">
+                  💡 <strong>Detailed Solutions Available:</strong> Scroll down to review the step-by-step mathematical explanations and derivations for every question.
+                </div>
               </div>
             )}
 
@@ -435,15 +518,39 @@ export default function TestsPage() {
                 return (
                   <div
                     key={q.id}
-                    className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3"
+                    className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3.5"
                   >
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-6 h-6 rounded-lg bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                        {qIndex + 1}
-                      </span>
-                      <h4 className="font-bold text-sm text-slate-900 leading-snug">
-                        {q.question}
-                      </h4>
+                    {/* Question Header & Type Tag */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-6 h-6 rounded-lg bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                          {qIndex + 1}
+                        </span>
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-sm text-slate-900 leading-snug whitespace-pre-line">
+                            {q.question}
+                          </h4>
+                          {q.subject && (
+                            <span className="text-[10px] text-slate-400 font-semibold block">
+                              {q.subject} {q.topic ? `• ${q.topic}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {q.type && (
+                        <span
+                          className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+                            q.type === "NAT" || q.type === "Numerical"
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : q.type === "MSQ"
+                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
+                        >
+                          {q.type}
+                        </span>
+                      )}
                     </div>
 
                     {/* Multiple-Choice Options */}
@@ -461,10 +568,10 @@ export default function TestsPage() {
                         if (testSubmitted) {
                           if (isCorrect) {
                             optionStyle =
-                              "bg-emerald-50 border-emerald-500 text-emerald-900 font-bold";
+                              "bg-emerald-50 border-emerald-500 text-emerald-950 font-bold";
                           } else if (isChosen && !isCorrect) {
                             optionStyle =
-                              "bg-rose-50 border-rose-300 text-rose-700 line-through";
+                              "bg-rose-50 border-rose-300 text-rose-800 line-through";
                           } else {
                             optionStyle = "bg-white border-slate-200 text-slate-400 opacity-60";
                           }
@@ -493,6 +600,19 @@ export default function TestsPage() {
                         );
                       })}
                     </div>
+
+                    {/* Step-by-Step Solution & Derivation (Visible after Submission) */}
+                    {testSubmitted && q.explanation && (
+                      <div className="ml-8 p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl space-y-1 text-xs">
+                        <div className="font-extrabold text-blue-900 flex items-center gap-1.5">
+                          <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Step-by-Step Solution & GATE Derivation:</span>
+                        </div>
+                        <p className="text-blue-800 text-[11px] leading-relaxed whitespace-pre-line font-mono">
+                          {q.explanation}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -500,8 +620,8 @@ export default function TestsPage() {
 
             {/* Modal Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <span className="text-xs text-slate-400 font-medium">
-                {Object.keys(selectedAnswers).length} of {activeTestForTaking.questions.length} Answered
+              <span className="text-xs text-slate-500 font-medium">
+                {Object.keys(selectedAnswers).length} of {activeTestForTaking.questions.length} Attempted
               </span>
 
               <div className="flex items-center gap-3">

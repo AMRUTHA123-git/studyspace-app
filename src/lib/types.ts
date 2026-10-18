@@ -64,6 +64,10 @@ export interface MockTestQuestion {
   question: string;
   options: string[];
   correctOptionIndex: number;
+  explanation?: string;
+  type?: "NAT" | "MCQ" | "MSQ" | "Numerical" | "Conceptual";
+  subject?: string;
+  topic?: string;
 }
 
 export interface MockTestItem {

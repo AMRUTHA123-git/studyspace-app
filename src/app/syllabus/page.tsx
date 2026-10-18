@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWorkspaceStorage } from "@/lib/storage";
 import { parseSyllabusOutline } from "@/lib/syllabusParser";
+import { GATE_2027_CS_SYLLABUS } from "@/lib/gateSyllabusData";
 import {
   BookOpen,
   Plus,
@@ -14,69 +15,156 @@ import {
   Layers,
   GraduationCap,
   Trash2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 
 export default function DynamicSyllabusPage() {
-  const { exams, updateExamSyllabus, toggleMicroTopic, isLoaded } = useWorkspaceStorage();
+  const { exams, updateExamSyllabus, saveExams, toggleMicroTopic, isLoaded } =
+    useWorkspaceStorage();
 
   // Active exam selection for viewing
-  const [selectedExamId, setSelectedExamId] = useState<string>(exams[0]?.id || "exam-1");
+  const [selectedExamId, setSelectedExamId] = useState<string>(
+    exams[0]?.id || "exam-1"
+  );
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalExamId, setModalExamId] = useState<string>(exams[0]?.id || "exam-1");
-  const [outlineText, setOutlineText] = useState("");
+  const [modalExamId, setModalExamId] = useState<string>(
+    exams[0]?.id || "exam-1"
+  );
+  // Controlled rawText state for textarea
+  const [rawText, setRawText] = useState("");
   const [openChapters, setOpenChapters] = useState<Record<string, boolean>>({});
+  const [notification, setNotification] = useState<string | null>(null);
 
-  const activeExam = exams.find((e) => e.id === selectedExamId) || exams[0];
+  // Sync selected exam when exams change
+  useEffect(() => {
+    if (exams.length > 0 && !exams.some((e) => e.id === selectedExamId)) {
+      setSelectedExamId(exams[0].id);
+    }
+  }, [exams, selectedExamId]);
+
+  const activeExam =
+    exams.find((e) => e.id === selectedExamId) || exams[0];
+
+  const showToast = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 4000);
+  };
 
   const handleOpenModal = () => {
     setModalExamId(selectedExamId || exams[0]?.id || "");
     setIsModalOpen(true);
   };
 
-  const handleInsertSample = () => {
-    setOutlineText(`Subject: ${activeExam ? activeExam.name : "Computer Networks"}
-Chapter 1: Transport Layer Protocols
-- TCP 3-Way Handshake & SYN Floods
-- TCP Tahoe vs. Reno Congestion Control
-- UDP Header Format & Checksum Calculations
-
-Chapter 2: Network Security & Cryptography
-- Public Key Cryptography & RSA Steps
-- Firewalls, Packet Filtering & NAT
-- Transport Layer Security (TLS 1.3)`);
+  // Sample format insert helpers for multi-format parser testing
+  const handleInsertArrowSample = () => {
+    setRawText(`Digital Logic > Boolean Algebra > K-Maps (2, 3, 4 Variables)
+Digital Logic > Boolean Algebra > Quine-McCluskey Minimization
+Digital Logic > Combinational Circuits > Multiplexers & Decoders
+Computer Networks > Transport Layer > TCP 3-Way Handshake
+Computer Networks > Transport Layer > Congestion Control & Fast Recovery`);
   };
 
+  const handleInsertColonSample = () => {
+    setRawText(`Operating Systems: CPU Scheduling (FCFS, Round Robin, SJF)
+Operating Systems: Virtual Memory & Page Replacement (FIFO, LRU, Optimal)
+Databases: Normalization (1NF, 2NF, 3NF, BCNF)
+Databases: SQL Queries & Aggregations
+Algorithms: Dijkstra & Bellman-Ford Shortest Path`);
+  };
+
+  const handleInsertPlainSample = () => {
+    setRawText(`Binary Search Trees & AVL Rotations
+Asymptotic Notations (Big-O, Big-Omega, Big-Theta)
+Master Theorem for Divide-and-Conquer
+Eulerian and Hamiltonian Graph Connectivity
+Eigenvalues and Cayley-Hamilton Theorem`);
+  };
+
+  // One-click load complete GATE 2027 CS & General Aptitude Syllabus
+  const handleLoadDefaultGateSyllabus = () => {
+    try {
+      let targetExam = exams.find(
+        (e) => e.code === "GATE-CS" || e.name.toLowerCase().includes("gate")
+      );
+      let updatedExams = [...exams];
+
+      if (!targetExam) {
+        targetExam = {
+          id: `exam-${Date.now()}`,
+          name: "GATE Computer Science 2027",
+          code: "GATE-CS",
+          date: "2027-02-14",
+          createdAt: Date.now(),
+          subjects: GATE_2027_CS_SYLLABUS,
+        };
+        updatedExams = [targetExam, ...exams];
+        saveExams(updatedExams);
+        setSelectedExamId(targetExam.id);
+      } else {
+        const examToUpdateId = activeExam?.id || targetExam.id;
+        updateExamSyllabus(examToUpdateId, GATE_2027_CS_SYLLABUS);
+        setSelectedExamId(examToUpdateId);
+      }
+
+      // Auto expand all chapters for clean immediate inspection
+      const openMap: Record<string, boolean> = {};
+      GATE_2027_CS_SYLLABUS.forEach((sub) => {
+        sub.chapters.forEach((ch) => {
+          openMap[ch.id] = true;
+        });
+      });
+      setOpenChapters(openMap);
+      setIsModalOpen(false);
+      showToast("Loaded complete GATE 2027 CS & General Aptitude syllabus (11 Subjects)!");
+    } catch (err) {
+      console.error("Error loading default GATE syllabus:", err);
+      alert("Failed to load default GATE syllabus.");
+    }
+  };
+
+  // Robust Multi-Format Parser submission
   const handleBuildSyllabus = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!outlineText.trim()) return;
+    if (!rawText.trim()) return;
 
-    const targetExam = exams.find((ex) => ex.id === modalExamId);
-    const parsedSubjects = parseSyllabusOutline(
-      outlineText,
-      targetExam ? targetExam.name : "General Subject"
-    );
+    try {
+      const targetExam =
+        exams.find((ex) => ex.id === modalExamId) || activeExam;
+      const parsedSubjects = parseSyllabusOutline(
+        rawText,
+        targetExam ? targetExam.name : "General / Custom Topics"
+      );
 
-    if (parsedSubjects.length === 0) {
-      alert("Unable to detect chapters or topics. Please check your text format.");
-      return;
-    }
+      if (parsedSubjects.length === 0) {
+        alert("Unable to parse syllabus topics. Please check your text format.");
+        return;
+      }
 
-    updateExamSyllabus(modalExamId, parsedSubjects);
-    setSelectedExamId(modalExamId);
-    setIsModalOpen(false);
-    setOutlineText("");
+      const examIdToUpdate = modalExamId || activeExam?.id || exams[0]?.id;
+      updateExamSyllabus(examIdToUpdate, parsedSubjects);
+      setSelectedExamId(examIdToUpdate);
+      setIsModalOpen(false);
+      setRawText("");
 
-    // Auto expand all chapters
-    const openMap: Record<string, boolean> = {};
-    parsedSubjects.forEach((sub) => {
-      sub.chapters.forEach((ch) => {
-        openMap[ch.id] = true;
+      // Auto expand all chapters
+      const openMap: Record<string, boolean> = {};
+      parsedSubjects.forEach((sub) => {
+        sub.chapters.forEach((ch) => {
+          openMap[ch.id] = true;
+        });
       });
-    });
-    setOpenChapters(openMap);
+      setOpenChapters(openMap);
+      showToast(
+        `Added syllabus with ${parsedSubjects.length} subject(s) & persisted to workspace!`
+      );
+    } catch (error) {
+      console.error("Error parsing syllabus text:", error);
+      alert("An unexpected error occurred while parsing. Please try again.");
+    }
   };
 
   const toggleChapter = (chId: string) => {
@@ -84,12 +172,24 @@ Chapter 2: Network Security & Cryptography
   };
 
   const handleClearSyllabus = () => {
-    if (confirm("Are you sure you want to clear this syllabus outline?")) {
+    if (
+      confirm(
+        `Are you sure you want to reset the syllabus for "${
+          activeExam?.name || "this exam"
+        }"?`
+      )
+    ) {
       updateExamSyllabus(activeExam.id, []);
+      showToast("Syllabus outline cleared.");
     }
   };
 
-  if (!isLoaded) return <div className="p-8 text-slate-400">Loading syllabus builder...</div>;
+  if (!isLoaded)
+    return (
+      <div className="p-8 text-slate-400 font-semibold animate-pulse">
+        Loading syllabus builder...
+      </div>
+    );
 
   // Calculate syllabus metrics
   let totalTopics = 0;
@@ -101,15 +201,26 @@ Chapter 2: Network Security & Cryptography
       s.chapters.forEach((c) => {
         totalTopics += c.microTopics.length;
         doneTopics += c.microTopics.filter((m) => m.isCompleted).length;
-        weeklyTopics += c.microTopics.filter((m) => m.isCompleted && m.completedThisWeek).length;
+        weeklyTopics += c.microTopics.filter(
+          (m) => m.isCompleted && m.completedThisWeek
+        ).length;
       });
     });
   }
 
-  const completionPct = totalTopics > 0 ? Math.round((doneTopics / totalTopics) * 100) : 0;
+  const completionPct =
+    totalTopics > 0 ? Math.round((doneTopics / totalTopics) * 100) : 0;
 
   return (
     <div className="p-8 space-y-8 flex-1">
+      {/* Toast Notification */}
+      {notification && (
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-2.5 animate-bounce">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{notification}</span>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
@@ -122,18 +233,28 @@ Chapter 2: Network Security & Cryptography
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Build dynamic, chapter-by-chapter checklists directly from AI outlines linked to your exams.
+            Build dynamic, chapter-by-chapter checklists directly from pasted outlines or load official GATE 2027 curriculum.
           </p>
         </div>
 
-        {/* Action Button: "+ Add Syllabus" */}
-        <button
-          onClick={handleOpenModal}
-          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-emerald-600/25 flex items-center gap-2 cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Add Syllabus</span>
-        </button>
+        {/* Action Buttons: "Load Default GATE 2027 CS Syllabus" & "+ Add Syllabus" */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleLoadDefaultGateSyllabus}
+            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-blue-600/25 flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Load Default GATE 2027 CS Syllabus</span>
+          </button>
+
+          <button
+            onClick={handleOpenModal}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-emerald-600/25 flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Add Syllabus</span>
+          </button>
+        </div>
       </div>
 
       {/* Exam Selector Bar */}
@@ -155,40 +276,55 @@ Chapter 2: Network Security & Cryptography
             </select>
           </div>
 
-          {activeExam?.subjects?.length > 0 && (
-            <div className="flex items-center gap-2 pr-2">
+          <div className="flex items-center gap-3">
+            {activeExam?.subjects?.length > 0 && (
+              <span className="text-xs font-semibold text-slate-500">
+                {activeExam.subjects.length} Subjects • {totalTopics} Micro-Topics
+              </span>
+            )}
+
+            {activeExam?.subjects?.length > 0 && (
               <button
                 onClick={handleClearSyllabus}
-                className="text-xs font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer pr-2"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Reset Outline</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
       {/* Main Content Area */}
       {!activeExam || !activeExam.subjects || activeExam.subjects.length === 0 ? (
-        /* 1. BLANK STATE (No Hardcoded Dummy Data) */
-        <div className="py-16 text-center rounded-3xl border-2 border-dashed border-slate-200 bg-white p-8 space-y-4 shadow-xs">
+        /* 1. BLANK STATE */
+        <div className="py-16 text-center rounded-3xl border-2 border-dashed border-slate-200 bg-white p-8 space-y-5 shadow-xs">
           <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-3xl">
             📖
           </div>
-          <h3 className="text-lg font-black text-slate-900">No Syllabus Added Yet</h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-            You haven't set up the syllabus outline for{" "}
-            <span className="font-bold text-slate-700">{activeExam ? activeExam.name : "your target exam"}</span>.
-            Use our AI Outline Bridge to convert your syllabus PDF into an interactive checklist in 3 simple steps!
+          <h3 className="text-lg font-black text-slate-900">
+            No Syllabus Added Yet for {activeExam ? activeExam.name : "Your Exam"}
+          </h3>
+          <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+            Quickly get started by either loading the official <strong>GATE 2027 CS & General Aptitude Syllabus</strong> (covers 11 core subjects with full chapter drill-downs) or pasting your own custom outline!
           </p>
-          <div className="pt-2">
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              onClick={handleLoadDefaultGateSyllabus}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-blue-600/25 flex items-center gap-2 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Load Default GATE 2027 CS Syllabus</span>
+            </button>
+
             <button
               onClick={handleOpenModal}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-emerald-600/25 flex items-center gap-2 mx-auto cursor-pointer"
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl transition shadow-md shadow-emerald-600/25 flex items-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Add Syllabus for {activeExam ? activeExam.name.split(":")[0] : "Exam"}</span>
+              <span>Paste Custom Outline</span>
             </button>
           </div>
         </div>
@@ -200,7 +336,7 @@ Chapter 2: Network Security & Cryptography
             <div className="flex justify-between items-center text-xs font-bold text-slate-700">
               <span className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-emerald-600" />
-                <span>Overall Syllabus Progress</span>
+                <span>Overall Syllabus Progress ({activeExam.name})</span>
               </span>
               <span className="text-emerald-600 font-extrabold text-sm">
                 {doneTopics} of {totalTopics} Topics ({completionPct}%)
@@ -222,7 +358,8 @@ Chapter 2: Network Security & Cryptography
               subTotal += c.microTopics.length;
               subDone += c.microTopics.filter((m) => m.isCompleted).length;
             });
-            const subPct = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+            const subPct =
+              subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
 
             return (
               <div
@@ -236,13 +373,22 @@ Chapter 2: Network Security & Cryptography
                       <BookOpen className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-sm text-slate-900">{sub.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-extrabold text-sm text-slate-900">
+                          {sub.name}
+                        </h3>
+                        {sub.code && (
+                          <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">
+                            {sub.code}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-slate-500 font-medium">
-                        {subDone} of {subTotal} micro-topics mastered
+                        {subDone} of {subTotal} micro-topics mastered ({sub.chapters.length} chapters)
                       </span>
                     </div>
                   </div>
-                  <span className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
                     {subPct}%
                   </span>
                 </div>
@@ -251,8 +397,11 @@ Chapter 2: Network Security & Cryptography
                 <div className="p-4 space-y-3.5">
                   {sub.chapters.map((ch) => {
                     const chTotal = ch.microTopics.length;
-                    const chDone = ch.microTopics.filter((m) => m.isCompleted).length;
-                    const chPct = chTotal > 0 ? Math.round((chDone / chTotal) * 100) : 0;
+                    const chDone = ch.microTopics.filter(
+                      (m) => m.isCompleted
+                    ).length;
+                    const chPct =
+                      chTotal > 0 ? Math.round((chDone / chTotal) * 100) : 0;
                     const isOpen = openChapters[ch.id] ?? true;
 
                     return (
@@ -271,9 +420,11 @@ Chapter 2: Network Security & Cryptography
                             ) : (
                               <ChevronRight className="w-4 h-4 text-slate-500" />
                             )}
-                            <h4 className="font-bold text-xs text-slate-800">{ch.title}</h4>
+                            <h4 className="font-bold text-xs text-slate-800">
+                              {ch.title}
+                            </h4>
                           </div>
-                          <span className="text-[11px] font-mono text-slate-400">
+                          <span className="text-[11px] font-mono text-slate-400 font-medium">
                             {chDone}/{chTotal} ({chPct}%)
                           </span>
                         </div>
@@ -291,7 +442,12 @@ Chapter 2: Network Security & Cryptography
                                     type="checkbox"
                                     checked={mt.isCompleted}
                                     onChange={() =>
-                                      toggleMicroTopic(activeExam.id, sub.id, ch.id, mt.id)
+                                      toggleMicroTopic(
+                                        activeExam.id,
+                                        sub.id,
+                                        ch.id,
+                                        mt.id
+                                      )
                                     }
                                     className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-0 cursor-pointer"
                                   />
@@ -306,7 +462,7 @@ Chapter 2: Network Security & Cryptography
                                   </span>
                                 </div>
                                 {mt.isCompleted && (
-                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
                                     Done
                                   </span>
                                 )}
@@ -324,7 +480,7 @@ Chapter 2: Network Security & Cryptography
         </div>
       )}
 
-      {/* 3. INSTRUCTIONAL MODAL (THE CORE FEATURE) */}
+      {/* 3. ROBUST MULTI-FORMAT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-7 max-w-xl w-full shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto">
@@ -335,8 +491,12 @@ Chapter 2: Network Security & Cryptography
                   📚
                 </div>
                 <div>
-                  <h3 className="font-black text-base text-slate-900">Add Exam Syllabus</h3>
-                  <p className="text-[11px] text-slate-400">Step-by-step AI Outline Bridge</p>
+                  <h3 className="font-black text-base text-slate-900">
+                    Add Exam Syllabus
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Multi-Format Parser (Subject &gt; Topic, Subject: Topic, Plain Lines)
+                  </p>
                 </div>
               </div>
               <button
@@ -347,52 +507,24 @@ Chapter 2: Network Security & Cryptography
               </button>
             </div>
 
-            {/* 3-STEP INSTRUCTIONAL GUIDE */}
-            <div className="space-y-2.5">
-              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
-                How to convert your syllabus:
-              </h4>
-
-              <div className="grid grid-cols-1 gap-2.5">
-                {/* Step 1 */}
-                <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                    1
-                  </span>
-                  <div>
-                    <h5 className="text-xs font-bold text-blue-900">Upload PDF to AI</h5>
-                    <p className="text-[11px] text-blue-700 mt-0.5">
-                      Upload your official syllabus PDF to an AI like ChatGPT or Gemini.
-                    </p>
-                  </div>
+            {/* Quick Default GATE 2027 Button Banner */}
+            <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="font-bold text-xs text-blue-950 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Preparing for GATE 2027 CS?</span>
                 </div>
-
-                {/* Step 2 */}
-                <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-100 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center shrink-0">
-                    2
-                  </span>
-                  <div>
-                    <h5 className="text-xs font-bold text-amber-900">Request a Clean Outline</h5>
-                    <p className="text-[11px] text-amber-800 mt-0.5">
-                      Ask the AI: <em>"Convert this syllabus into a clean text outline: Subject &gt; Chapters &gt; bullet topics."</em>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Step 3 */}
-                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                    3
-                  </span>
-                  <div>
-                    <h5 className="text-xs font-bold text-emerald-900">Paste Text Below</h5>
-                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                      Copy that text outline and paste it into the box below.
-                    </p>
-                  </div>
-                </div>
+                <p className="text-[11px] text-blue-700">
+                  Load all 11 subjects (Math, COA, OS, Networks, DBMS, TOC, etc.) with 1 click.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={handleLoadDefaultGateSyllabus}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer shrink-0"
+              >
+                Load GATE 2027
+              </button>
             </div>
 
             {/* Input Form & Exam Linking */}
@@ -416,33 +548,48 @@ Chapter 2: Network Security & Cryptography
                 </select>
               </div>
 
-              {/* Large Textarea */}
+              {/* Multi-Format Textarea with Controlled State */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
                   <label className="block text-xs font-bold text-slate-700">
-                    Paste AI Outline Text
+                    Paste Syllabus Text (Any Format)
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleInsertSample}
-                    className="text-[11px] font-bold text-emerald-600 hover:underline cursor-pointer"
-                  >
-                    📋 Insert Sample Outline
-                  </button>
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-700">
+                    <span>Try:</span>
+                    <button
+                      type="button"
+                      onClick={handleInsertArrowSample}
+                      className="hover:underline cursor-pointer bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                    >
+                      Subject &gt; Topic
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleInsertColonSample}
+                      className="hover:underline cursor-pointer bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                    >
+                      Subject: Topic
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleInsertPlainSample}
+                      className="hover:underline cursor-pointer bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                    >
+                      Plain Lines
+                    </button>
+                  </div>
                 </div>
+
                 <textarea
-                  value={outlineText}
-                  onChange={(e) => setOutlineText(e.target.value)}
-                  rows={6}
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  rows={7}
                   required
-                  placeholder={`Subject: Computer Networks
-Chapter: Transport Layer
-- TCP 3-Way Handshake
-- Congestion Control
-- UDP Header Format
-Chapter: Network Security
-- Public Key Cryptography
-- Firewalls & Packet Inspection`}
+                  placeholder={`Supports all formats:
+1. Subject > Topic (e.g. Operating Systems > CPU Scheduling)
+2. Subject: Topic (e.g. Computer Networks: TCP 3-Way Handshake)
+3. Plain topics (e.g. Binary Search Trees)
+4. AI outlines with # Headings & bullet lists`}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-emerald-500 leading-relaxed"
                 />
               </div>
@@ -453,7 +600,8 @@ Chapter: Network Security
                   type="submit"
                   className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm rounded-xl transition shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <span>⚡ Build Syllabus</span>
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>Build & Save Syllabus</span>
                 </button>
                 <button
                   type="button"
